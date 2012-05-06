@@ -33,7 +33,7 @@ class StrengthWord(QWidget, QWidgetMinix):
         self.wordview = WordView()
         self.popup_wordview = PopupWordView()
         self.popup_wordview.detailLinkClicked.connect(
-            self.wordview.query)
+            self.on_popup_wordview_detailLinkClicked)
         self.sentenceview = SentenceView()
         self.sentenceview.enable_debug()
 
@@ -115,6 +115,10 @@ class StrengthWord(QWidget, QWidgetMinix):
         elif index == 1: # self.sentenceview
             self.sentenceview.query(self.wordview.current_word())
             self.sentenceview.query_lineedit.setFocus()
+
+    def on_popup_wordview_detailLinkClicked(self, word):
+        self.show()
+        self.wordview.query(word)
 
     def showEvent(self, event):
         self.show_action.setChecked(True)
