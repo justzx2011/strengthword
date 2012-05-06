@@ -6,25 +6,43 @@ from PySide.QtCore import *
 from PySide.QtGui import *
 from PySide.QtWebKit import *
 
-from dictview import Dictview
+from minix import QWidgetMinix
+from dictview import WordView, PopupWordView, SentenceView
 
-class StrengthWord(QWidget):
+class StrengthWord(QWidget, QWidgetMinix):
+
+    WIDTH = 700
+    HEIGHT = 540
 
     def __init__(self):
         QWidget.__init__(self)
+        self.init_window()
         self.init_dictviews()
+        self.init_tabwidget()
         self.init_clipboard()
         self.init_tray()
+        self.init_layout()
         QApplication.setQuitOnLastWindowClosed(False)
 
+    def init_window(self):
+        self.setWindowTitle('StrengthWord')
+        self.resize(StrengthWord.WIDTH, StrengthWord.HEIGHT)
+        self.screen_center()
+
     def init_dictviews(self):
-        self.window_dictview = Dictview()
-        self.popup_dictview = Dictview()
-        self.popup_dictview.setWindowFlags(Qt.Popup)
-        self.popup_dictview.dictlist = [1, 101]
-        self.popup_dictview.resize(360, 360)
-        self.popup_dictview.detailLinkClicked.connect(
-            self.window_dictview.query)
+        self.wordview = WordView()
+        self.popup_wordview = PopupWordView()
+        self.popup_wordview.detailLinkClicked.connect(
+            self.wordview.query)
+        self.sentenceview = SentenceView()
+        self.sentenceview.enable_debug()
+
+    def init_tabwidget(self):
+        self.tabwidget = QTabWidget()
+        self.tabwidget.addTab(self.wordview, u'词典')
+        self.tabwidget.addTab(self.sentenceview, u'句库')
+
+        self.tabwidget.currentChanged.connect(self.on_tabwidget_currentChanged)
 
     def init_clipboard(self):
         self.clipboard = QApplication.clipboard()
@@ -54,15 +72,21 @@ class StrengthWord(QWidget):
         self.trayicon.setContextMenu(self.trayicon_menu)
         self.trayicon.activated.connect(self.on_trayicon_activated)
 
+    def init_layout(self):
+        self.layout = QVBoxLayout()
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(0)
+
+        self.layout.addWidget(self.tabwidget)
+        self.setLayout(self.layout)
+
     def show(self):
         self.trayicon.show()
-        self.window_dictview.show()
+        QWidget.show(self)
+        self.wordview.query_lineedit.setFocus()
 
     def on_show_action_triggered(self):
-        if self.show_action.isChecked():
-            self.window_dictview.show()
-        else:
-            self.window_dictview.hide()
+        self.setVisible(self.show_action.isChecked())
 
     def on_scan_action_triggered(self):
         if self.scan_action.isChecked():
@@ -76,19 +100,27 @@ class StrengthWord(QWidget):
         if reason != QSystemTrayIcon.Trigger:
             return
 
-        visible = self.window_dictview.isVisible()
-        if visible:
-            self.window_dictview.hide()
-        else:
-            self.window_dictview.show()
+        visible = self.isVisible()
+        self.setVisible(not visible)
         self.show_action.setChecked(not visible)
 
     def on_clipboard_selectionChanged(self):
         text = self.clipboard.text(QClipboard.Selection)
-        self.popup_dictview.query(text)
+        self.popup_wordview.query(text)
 
-    def on_dictview_detailLinkClicked(self, word):
-        print 'click mini deatil: ' + word
+    def on_tabwidget_currentChanged(self, index):
+        if index == 0: # self.wordview
+            self.wordview.query(self.sentenceview.current_word())
+            self.wordview.query_lineedit.setFocus()
+        elif index == 1: # self.sentenceview
+            self.sentenceview.query(self.wordview.current_word())
+            self.sentenceview.query_lineedit.setFocus()
+
+    def showEvent(self, event):
+        self.show_action.setChecked(True)
+
+    def closeEvent(self, event):
+        self.show_action.setChecked(False)
 
 def main():
     app = QApplication(sys.argv)

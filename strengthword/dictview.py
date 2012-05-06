@@ -11,28 +11,17 @@ from PySide.QtWebKit import *
 import const
 from minix import QWidgetMinix
 
-class Dictview(QFrame, QWidgetMinix):
-
-    URL = 'http://dict-client.iciba.com/index.php?c=client&word=%s&dictlist=%s'
-    DICTLIST = [1,101,3,2,102,4,5,103]
-    WIDTH = 700
-    HEIGHT = 540
-    ALLOW_LENGTH = 25
-
-    detailLinkClicked = Signal(str)
+class View(QFrame, QWidgetMinix):
 
     def __init__(self):
-        super(Dictview, self).__init__()
+        QFrame.__init__(self)
         self.init_window()
         self.init_webview()
         self.init_toolbar()
         self.init_layout()
-        self.init_screen_info()
-        self.init_config()
 
     def init_window(self):
         self.setWindowTitle('StrengthWord')
-        self.resize(Dictview.WIDTH, Dictview.HEIGHT)
         self.screen_center()
 
     def init_webview(self):
@@ -40,7 +29,6 @@ class Dictview(QFrame, QWidgetMinix):
         self.webpage = self.webview.page()
         self.webframe = self.webpage.mainFrame()
 
-        self.webpage.setViewportSize(QSize(Dictview.WIDTH, Dictview.HEIGHT))
         self.webpage.setLinkDelegationPolicy(
             QWebPage.DelegateAllLinks);
 
@@ -79,20 +67,52 @@ class Dictview(QFrame, QWidgetMinix):
         self.layout.addWidget(self.webview)
         self.setLayout(self.layout)
 
-    def init_screen_info(self):
-        rect = QDesktopWidget().availableGeometry()
-        self.screen_width = rect.width()
-        self.screen_height = rect.height()
-
-    def init_config(self):
-        self.dictlist = Dictview.DICTLIST
-        self.window_width = Dictview.WIDTH
-        self.window_height = Dictview.HEIGHT
-        self.allow_length = Dictview.ALLOW_LENGTH
-
     def on_query_lineedit_returnPressed(self):
         text = self.query_lineedit.text()
         self.query(text)
+
+    def on_webview_loadFinished(self):
+        raise NotImplementedError
+
+    def on_webview_linkClicked(self, url):
+        raise NotImplementedError
+
+    def enable_debug(self, value=True):
+        ''' 开启开发者工具 '''
+
+        self.webview.settings().setAttribute(
+            QWebSettings.WebAttribute.DeveloperExtrasEnabled, value)
+
+    def current_word(self):
+        return self.query_lineedit.text()
+
+    def set_html(self, html):
+        self.webview.blockSignals(True)
+        self.webview.setHtml(html)
+        self.webview.blockSignals(False)
+
+    def show(self):
+        QFrame.show(self)
+        self.activateWindow()
+        self.query_lineedit.setFocus()
+
+    def create_url(self, text):
+        raise NotImplementedError
+
+    def query(self, text):
+        text = text.strip()
+        if text == '':
+            return
+
+        self.query_lineedit.setText(text)
+        url = self.create_url(text)
+        self.webview.load(url)
+
+class WordView(View):
+
+    def __init__(self):
+        View.__init__(self)
+        self.dictlist = [1,101,3,2,102,4,5,103]
 
     def on_webview_loadFinished(self):
         if self.webview.url().toString() == 'about:blank':
@@ -101,14 +121,46 @@ class Dictview(QFrame, QWidgetMinix):
         word = self.webview.url().queryItemValue('word')
         self.query_lineedit.setText(word)
         if self.webview.title() == u'爱词霸在线词典':
-            self.run_javascript()
+            js = self.get_run_javascript()
+            self.webframe.evaluateJavaScript(js)
         else:
-            html = const.not_fount_html % {'word': word}
-            self.webview.blockSignals(True)
-            self.webview.setHtml(html)
-            self.webview.blockSignals(False)
+            html = const.wordview_not_found_html % {'word': word}
+            self.set_html(html)
 
         self.show()
+
+    def on_webview_linkClicked(self, url):
+        if url.host() != 'dict-client.iciba.com':
+            self.hide()
+            webbrowser.open(url.toString())
+            return
+
+        self.webview.load(url)
+
+    def get_run_javascript(self):
+        word = self.webview.url().queryItemValue('word')
+        js = const.wordview_common_js
+        js += const.wordview_js % dict(word=word)
+        return js
+
+    def create_url(self, text):
+        url_tpl = 'http://dict-client.iciba.com/index.php?c=client&word=%s&dictlist=%s'
+        url = url_tpl % (text, ','.join(map(str, self.dictlist)))
+        return QUrl(url)
+
+class PopupWordView(WordView):
+
+    detailLinkClicked = Signal(str)
+
+    def __init__(self):
+        WordView.__init__(self)
+        self.dictlist = [1, 101]
+        self.setWindowFlags(Qt.Popup)
+        self.setStyleSheet('QFrame {border: 1px solid #55AAFF;}')
+        self.resize(360, 360)
+        self.webpage.setViewportSize(self.size())
+        self.allow_length = 25
+        self.toolbar.hide()
 
     def on_webview_linkClicked(self, url):
         if url.fragment() == 'detail':
@@ -117,56 +169,17 @@ class Dictview(QFrame, QWidgetMinix):
             self.detailLinkClicked.emit(word)
             return
 
-        if url.host() != 'dict-client.iciba.com':
-            self.hide()
-            webbrowser.open(url.toString())
-            return
+        WordView.on_webview_linkClicked(self, url)
 
-        self.webview.load(url)
-
-    def enable_debug(self, value=True):
-        self.webview.settings().setAttribute(
-            QWebSettings.WebAttribute.DeveloperExtrasEnabled, value)
-
-    def setWindowFlags(self, flags):
-        if flags == Qt.Popup:
-            self.setStyleSheet('QFrame {border: 1px solid #55AAFF;}')
-            self.toolbar.hide()
-        else:
-            self.setStyleSheet('')
-            self.toolbar.show()
-
-        QFrame.setWindowFlags(self, flags)
-
-    def show(self):
-        if self.windowType() == Qt.Popup:
-            self.fix_page_content_size()
-            if not self.isActiveWindow():
-                self.follow_mouse()
-            self.inside_screen()
-        else:
-            self.setStyleSheet('')
-
-        QFrame.show(self)
-        self.activateWindow()
-
-        if self.query_lineedit.isVisible():
-            self.query_lineedit.setFocus()
-
-    def run_javascript(self):
-        # 执行一些修复性 Javascript
+    def get_run_javascript(self):
         word = self.webview.url().queryItemValue('word')
-        if self.windowType() == Qt.Popup:
-            window_type_js = const.popup_js % {'word': word}
-        else:
-            window_type_js = const.window_js % {'word': word}
+        js = const.wordview_common_js
+        js += const.popup_wordview_js % dict(word=word)
+        return js
 
-        self.webframe.addToJavaScriptWindowObject('python', QObject())
-        self.webframe.evaluateJavaScript(const.common_js)
-        self.webframe.evaluateJavaScript(window_type_js)
+    def auto_resize(self):
+        ''' 用 Javascript 获得页面有效高度 '''
 
-    def fix_page_content_size(self):
-        # 用 Javascript 获得页面有效高度
         get_new_height = lambda: int(self.webframe.evaluateJavaScript(
             'document.documentElement.scrollHeight')) + 2 # 2 是边框
 
@@ -179,9 +192,12 @@ class Dictview(QFrame, QWidgetMinix):
         if height1 != height2:
             self.resize(self.size().width(), height2)
 
-    def create_url(self, text):
-        url = Dictview.URL % (text, ','.join(map(str, self.dictlist)))
-        return QUrl(url)
+    def show(self):
+        self.auto_resize()
+        if not self.isActiveWindow():
+            self.follow_mouse()
+        self.inside_screen()
+        WordView.show(self)
 
     def query(self, text):
         text = text.strip()
@@ -192,27 +208,57 @@ class Dictview(QFrame, QWidgetMinix):
 
         # 选中大量文本，不取词
         if exceed_count > 0:
-            html = const.too_long_html % {'exceed_count': exceed_count}
-            self.webview.blockSignals(True)
-            self.webview.setHtml(html)
-            self.webview.blockSignals(False)
+            html = const.popup_wordview_too_long_html % \
+                {'exceed_count': exceed_count}
+            self.set_html(html)
             self.show()
             return
 
+        self.query_lineedit.setText(text)
         url = self.create_url(text)
         self.webview.load(url)
 
-def test_window():
+class SentenceView(View):
+
+    def __init__(self):
+        View.__init__(self)
+
+    def on_webview_loadFinished(self):
+        if self.webview.url().toString() == 'about:blank':
+            return
+
+        word = self.webview.url().queryItemValue('s')
+        self.query_lineedit.setText(word)
+        if self.webview.title() == '2012 free interface':
+            js = self.get_run_javascript()
+            self.webframe.evaluateJavaScript(js)
+        else:
+            html = const.sentenceview_not_found_html % {'word': word}
+            self.set_html(html)
+
+        self.show()
+
+    def get_run_javascript(self):
+        return const.sentenceview_js
+
+    def on_webview_linkClicked(self, url):
+        pass
+
+    def create_url(self, text):
+        url = 'http://interface2010.client.iciba.com/?c=dj2012&s=%s' % text
+        return QUrl(url)
+
+def test_wordview():
     app = QApplication(sys.argv)
-    dictview = Dictview()
-    dictview.enable_debug()
-    dictview.query('test')
-    dictview.show()
+    wordview = WordView()
+    wordview.enable_debug()
+    wordview.query('test')
+    wordview.show()
     app.exec_()
 
-def test_popup():
+def test_popup_wordview():
     app = QApplication(sys.argv)
-    dictview = Dictview()
+    dictview = PopupWordView()
     dictview.setWindowFlags(Qt.Popup)
     dictview.dictlist = [1, 101]
     dictview.resize(360, 360)
@@ -222,9 +268,18 @@ def test_popup():
     exit_button.show()
     app.exec_()
 
+def test_sentenceview():
+    app = QApplication(sys.argv)
+    sentenceview = SentenceView()
+    sentenceview.enable_debug()
+    sentenceview.query('test')
+    sentenceview.show()
+    app.exec_()
+
 def main():
-    test_window()
-    #test_popup()
+    test_wordview()
+    #test_popup_wordview()
+    #test_sentenceview()
 
 if __name__ == '__main__':
     main()

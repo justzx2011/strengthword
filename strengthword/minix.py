@@ -26,11 +26,13 @@ class QWidgetMinix(object):
         width, height = self.size().toTuple()
 
         # 避免超出屏幕边缘
-        right_outside = x + width - self.screen_width
+        rect = QDesktopWidget().availableGeometry()
+
+        right_outside = x + width - rect.width()
         if right_outside > 0:
             x -= right_outside
 
-        bottom_outside = y + height - self.screen_height
+        bottom_outside = y + height - rect.height()
         if bottom_outside > 0:
             y -= bottom_outside
 
