@@ -19,6 +19,7 @@ class StrengthWord(QWidget, QWidgetMinix):
         self.init_window()
         self.init_dictviews()
         self.init_tabwidget()
+        self.init_toolbar()
         self.init_clipboard()
         self.init_tray()
         self.init_layout()
@@ -43,6 +44,17 @@ class StrengthWord(QWidget, QWidgetMinix):
         self.tabwidget.addTab(self.sentenceview, u'句库')
 
         self.tabwidget.currentChanged.connect(self.on_tabwidget_currentChanged)
+
+    def init_toolbar(self):
+        self.toolbar = QWidget()
+        self.scan_checkbox = QCheckBox(u'取词')
+        self.scan_checkbox.setChecked(True)
+        self.scan_checkbox.stateChanged.connect(
+            self.on_scan_checkbox_stateChanged)
+        layout = QHBoxLayout()
+        layout.setAlignment(Qt.AlignRight)
+        layout.addWidget(self.scan_checkbox)
+        self.toolbar.setLayout(layout)
 
     def init_clipboard(self):
         self.clipboard = QApplication.clipboard()
@@ -78,6 +90,7 @@ class StrengthWord(QWidget, QWidgetMinix):
         self.layout.setSpacing(0)
 
         self.layout.addWidget(self.tabwidget)
+        self.layout.addWidget(self.toolbar)
         self.setLayout(self.layout)
 
     def show(self):
@@ -85,16 +98,26 @@ class StrengthWord(QWidget, QWidgetMinix):
         QWidget.show(self)
         self.wordview.query_lineedit.setFocus()
 
-    def on_show_action_triggered(self):
-        self.setVisible(self.show_action.isChecked())
-
-    def on_scan_action_triggered(self):
-        if self.scan_action.isChecked():
+    def scan_clipboard(self, scan=True):
+        if scan:
             self.clipboard.selectionChanged.connect(
                 self.on_clipboard_selectionChanged)
         else:
             self.clipboard.selectionChanged.disconnect(
                 self.on_clipboard_selectionChanged)
+
+    def on_scan_checkbox_stateChanged(self):
+        scan = self.scan_checkbox.isChecked()
+        self.scan_action.setChecked(scan)
+        self.scan_clipboard(scan)
+
+    def on_show_action_triggered(self):
+        self.setVisible(self.show_action.isChecked())
+
+    def on_scan_action_triggered(self):
+        scan = self.scan_action.isChecked()
+        self.scan_checkbox.setChecked(scan)
+        self.scan_clipboard(scan)
 
     def on_trayicon_activated(self, reason):
         if reason != QSystemTrayIcon.Trigger:
